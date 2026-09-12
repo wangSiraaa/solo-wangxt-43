@@ -40,3 +40,6 @@ tr.neg td { color: #c92a2a; }
 .confirm-bar { display: flex; align-items: center; gap: 12px; }
 .confirm-bar button { background: #2680c2; color: #fff; border: none; padding: 7px 18px; border-radius: 6px; cursor: pointer; }
 .confirm-bar button:disabled { opacity: 0.5; cursor: default; }
+.money-row td { background: #fffbf0; }
+.claims { color: #c92a2a; font-size: 13px; }
+tr.b-payable td { color: #5f3dc4; font-weight: 600; }

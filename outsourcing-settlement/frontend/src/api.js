@@ -14,6 +14,7 @@ export const api = {
   batches: () => req("/batches/"),
   flow: (code) => req(`/batches/${code}/flow/`),
   reconciliation: (code) => req(`/batches/${code}/reconciliation/`),
+  trajectory: (code) => req(`/batches/${code}/trajectory/`),
   contract: (code) => req(`/contracts/${code}/`),
   settlementPreview: (code) => req(`/batches/${code}/settlement/preview/`),
   confirm: (code, party) =>
@@ -23,4 +24,6 @@ export const api = {
     }),
   postReceipt: (payload) =>
     req("/receipts/", { method: "POST", body: JSON.stringify(payload) }),
+  postTransfer: (payload) =>
+    req("/transfers/", { method: "POST", body: JSON.stringify(payload) }),
 };

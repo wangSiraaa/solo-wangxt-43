@@ -49,9 +49,68 @@ export default function BatchFlow({ code }) {
         <div className="arrow">→</div>
         <Box title="累计合格" value={q.qualified_qty} sub={`可结算 ${q.settleable_qty}`} tone="good" />
         <Box title="报废" value={q.scrap_total} sub={`约定损耗内 ${q.allowed_loss_qty} / 超损耗 ${q.over_loss_qty}`} tone={Number(q.over_loss_qty) > 0 ? "bad" : ""} />
-        <Box title="在返" value={q.rework_outstanding} sub="返工未回厂" tone="warn" />
+        <Box title="在新厂" value={q.at_supplier_b} sub={`累计转出 ${q.transferred_out} / 二次报废 ${q.transfer_scrap_qty}`} tone={Number(q.at_supplier_b) > 0 ? "warn" : ""} />
+        <Box title="在返(原厂)" value={q.rework_outstanding} sub="原厂待返工" />
         <Box title="在制/未回" value={q.in_process_qty} sub="应产 − 已交代数" />
       </section>
+
+      {flow.transfers && flow.transfers.length > 0 && (
+        <section className="panel">
+          <h3>转厂返工（原厂无返工能力，费用由原厂承担）</h3>
+          <table>
+            <thead>
+              <tr><th>转厂单</th><th>新厂</th><th>数量</th><th>返工单价</th><th>回厂合格</th><th>二次报废</th><th>应付新厂</th><th>状态</th></tr>
+            </thead>
+            <tbody>
+              {flow.transfers.map((t) => {
+                const qBack = t.receipts.reduce((s, r) => s + Number(r.qualified), 0);
+                const sBack = t.receipts.reduce((s, r) => s + Number(r.scrap), 0);
+                const fee = t.receipts.reduce((s, r) => s + Number(r.rework_fee), 0);
+                return (
+                  <tr key={t.code}>
+                    <td>{t.code}（{t.transferred_at}）</td>
+                    <td>{t.to_supplier}</td>
+                    <td>{t.qty}</td>
+                    <td>{t.rework_unit_price}</td>
+                    <td>{qBack}</td>
+                    <td>{sBack}</td>
+                    <td>{fee.toFixed(2)}</td>
+                    <td>{t.status === "CLOSED" ? "已完结" : "在途"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {flow.liabilities && flow.liabilities.length > 0 && (
+            <table style={{ marginTop: 10 }}>
+              <thead>
+                <tr><th>责任账</th><th>责任方</th><th>应收方</th><th>金额</th><th>已抵扣</th><th>状态/追偿</th><th>说明</th></tr>
+              </thead>
+              <tbody>
+                {flow.liabilities.map((le, i) => (
+                  <tr key={i}>
+                    <td>{le.entry_type === "REWORK_FEE" ? "返工费" : "赔偿"}</td>
+                    <td>{le.supplier}</td>
+                    <td>{le.counter_supplier || "—"}</td>
+                    <td>{le.amount}</td>
+                    <td>{le.offset_amount}</td>
+                    <td>{le.claim ? `已转追偿 ${le.claim}` : le.status}</td>
+                    <td>{le.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {flow.claims && flow.claims.length > 0 && (
+            <p className="claims">
+              独立追偿：
+              {flow.claims.map((c) => (
+                <b key={c.code}> {c.code} {c.amount}（{c.reason}）</b>
+              ))}
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="panel">
         <h3>报工对照（供应商声称，不参与结算）</h3>

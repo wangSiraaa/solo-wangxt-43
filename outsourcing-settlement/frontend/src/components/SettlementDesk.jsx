@@ -5,6 +5,9 @@ const LINE_LABEL = {
   QUALIFIED: "合格加工费",
   OVER_LOSS: "超约定损耗扣款",
   LATE_PENALTY: "超期扣款",
+  REWORK_OFFSET: "返工费抵扣（原厂承担）",
+  COMPENSATION: "赔偿抵扣",
+  CLAIM_NOTICE: "转追偿提示",
 };
 
 export default function SettlementDesk({ code, onChanged }) {
@@ -94,9 +97,19 @@ export default function SettlementDesk({ code, onChanged }) {
             <tr><td colSpan="3">合格加工费</td><td>{view.qualified_amount}</td><td /></tr>
             <tr><td colSpan="3">超损耗扣款</td><td>-{view.over_loss_amount}</td><td /></tr>
             <tr><td colSpan="3">超期扣款</td><td>-{view.late_penalty_amount}</td><td /></tr>
-            <tr className="total"><td colSpan="3">应付合计</td><td>{view.total_amount}</td><td /></tr>
+            <tr><td colSpan="3">责任抵扣（返工费+赔偿）</td><td>-{view.liability_offset_amount}</td><td /></tr>
+            <tr className="total"><td colSpan="3">应付原厂合计</td><td>{view.total_amount}</td><td /></tr>
+            <tr className="b-payable"><td colSpan="3">应付新厂（独立应付线）</td><td>{view.b_payable_amount}</td><td /></tr>
           </tfoot>
         </table>
+        {view.claims && view.claims.length > 0 && (
+          <p className="claims">
+            独立追偿记录：
+            {view.claims.map((c) => (
+              <b key={c.code}> {c.code} {c.amount}（{c.reason}）</b>
+            ))}
+          </p>
+        )}
       </section>
 
       {!frozen && (

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "./api";
 import BatchFlow from "./components/BatchFlow";
 import SettlementDesk from "./components/SettlementDesk";
+import Trajectory from "./components/Trajectory";
 
 export default function App() {
   const [batches, setBatches] = useState([]);
@@ -53,15 +54,21 @@ export default function App() {
                   数量去向
                 </button>
                 <button
+                  className={tab === "trajectory" ? "on" : ""}
+                  onClick={() => setTab("trajectory")}
+                >
+                  责任轨迹
+                </button>
+                <button
                   className={tab === "settlement" ? "on" : ""}
                   onClick={() => setTab("settlement")}
                 >
                   结算工作台
                 </button>
               </nav>
-              {tab === "flow" ? (
-                <BatchFlow key={current.code} code={current.code} />
-              ) : (
+              {tab === "flow" && <BatchFlow key={current.code} code={current.code} />}
+              {tab === "trajectory" && <Trajectory key={current.code} code={current.code} />}
+              {tab === "settlement" && (
                 <SettlementDesk key={current.code} code={current.code} onChanged={load} />
               )}
             </>

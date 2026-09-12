@@ -3,8 +3,23 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import services
-from .models import ProcessingBatch, Settlement, WorkReport, Receipt
-from .serializers import ConfirmIn, ReceiptIn, WorkReportIn
+from .models import (
+    LiabilityEntry,
+    ProcessingBatch,
+    RecoveryClaim,
+    Settlement,
+    Supplier,
+    TransferOrder,
+    TransferReceipt,
+)
+from .serializers import (
+    ConfirmIn,
+    DeterminationIn,
+    ReceiptIn,
+    TransferIn,
+    TransferReceiptIn,
+    WorkReportIn,
+)
 
 
 def batch_summary(batch):
@@ -59,6 +74,41 @@ class BatchFlow(APIView):
             {"no": w.supplier_report_no, "qty": str(w.qty), "reported_at": w.reported_at.isoformat()}
             for w in batch.work_reports.order_by("reported_at", "id")
         ]
+        data["transfers"] = [
+            {
+                "code": t.code, "to_supplier": t.to_supplier.name, "qty": str(t.qty),
+                "rework_unit_price": str(t.rework_unit_price),
+                "transferred_at": t.transferred_at.isoformat(), "status": t.status,
+                "price_version_from": t.price_version.effective_from.isoformat() if t.price_version else None,
+                "receipts": [
+                    {"no": tr.receipt_no, "received_at": tr.received_at.isoformat(),
+                     "qualified": str(tr.qualified_qty), "scrap": str(tr.scrap_qty),
+                     "rework_fee": str(tr.rework_fee)}
+                    for tr in t.receipts.all()
+                ],
+            }
+            for t in batch.transfers.select_related("to_supplier", "price_version")
+        ]
+        data["liabilities"] = [
+            {
+                "entry_type": le.entry_type, "status": le.status,
+                "supplier": le.supplier.name,
+                "counter_supplier": le.counter_supplier.name if le.counter_supplier else None,
+                "amount": str(le.amount), "offset_amount": str(le.offset_amount),
+                "claim": le.claim.code if le.claim else None, "note": le.note,
+            }
+            for le in LiabilityEntry.objects.filter(batch=batch)
+            .select_related("supplier", "counter_supplier", "claim")
+        ]
+        data["claims"] = [
+            {"code": c.code, "supplier": c.supplier.name, "amount": str(c.amount),
+             "reason": c.reason, "status": c.status}
+            for c in RecoveryClaim.objects.filter(batch=batch)
+        ]
+        data["b_payable_amount"] = str(
+            sum((tr.rework_fee for tr in TransferReceipt.objects.filter(transfer__batch=batch)),
+                services.ZERO)
+        )
         return Response(data)
 
 
@@ -70,7 +120,8 @@ class BatchReconciliation(APIView):
         doc = services.batch_quantities(batch)
         ledger = services.ledger_quantities(batch)
         checks = []
-        for key in ("issued_qty", "reported_qty", "qualified_qty", "scrap_total", "rework_outstanding"):
+        for key in ("issued_qty", "reported_qty", "qualified_qty", "scrap_total",
+                    "rework_outstanding", "at_supplier_b", "transfer_scrap_qty"):
             checks.append({
                 "measure": key,
                 "document_side": str(doc[key]),
@@ -161,6 +212,63 @@ class SettlementDetail(APIView):
                 for l in settlement.lines.all()
             ],
         })
+
+
+class TransferPost(APIView):
+    """转厂：实物 A -> B，责任仍在 A。正在确认结算的批次拒绝转出。"""
+
+    def post(self, request):
+        s = TransferIn(data=request.data)
+        s.is_valid(raise_exception=True)
+        d = s.validated_data
+        batch = get_object_or_404(ProcessingBatch, code=d["batch_code"])
+        to_supplier = get_object_or_404(Supplier, code=d["to_supplier_code"])
+        order, created = services.post_transfer(
+            batch=batch, code=d["code"], to_supplier=to_supplier, qty=d["qty"],
+            transferred_at=d["transferred_at"], rework_unit_price=d["rework_unit_price"],
+        )
+        return Response({"code": order.code, "created": created, "status": order.status},
+                        status=201 if created else 200)
+
+
+class TransferReceiptPost(APIView):
+    def post(self, request):
+        s = TransferReceiptIn(data=request.data)
+        s.is_valid(raise_exception=True)
+        d = s.validated_data
+        transfer = get_object_or_404(TransferOrder, code=d["transfer_code"])
+        tr, created = services.post_transfer_receipt(
+            transfer=transfer, receipt_no=d["receipt_no"], received_at=d["received_at"],
+            qualified_qty=d["qualified_qty"], scrap_qty=d["scrap_qty"],
+        )
+        return Response({"id": tr.id, "created": created, "rework_fee": str(tr.rework_fee)},
+                        status=201 if created else 200)
+
+
+class LiabilityDeterminationPost(APIView):
+    """结算后追加责任认定：只形成独立追偿，不改已冻结快照。"""
+
+    def post(self, request, code):
+        s = DeterminationIn(data=request.data)
+        s.is_valid(raise_exception=True)
+        batch = get_object_or_404(ProcessingBatch, code=code)
+        entry, claim, waived = services.post_liability_determination(
+            batch=batch, qty=s.validated_data["qty"],
+            reference_date=s.validated_data["reference_date"],
+            note=s.validated_data["note"],
+        )
+        return Response({
+            "claim_code": claim.code, "claim_amount": str(claim.amount),
+            "cap_waived": str(waived), "note": entry.note,
+        }, status=201)
+
+
+class BatchTrajectory(APIView):
+    """同一批货的轨迹：实物所在方 / 质量责任方 / 应收应付方。"""
+
+    def get(self, request, code):
+        batch = get_object_or_404(ProcessingBatch, code=code)
+        return Response({"batch": batch.code, "events": services.goods_trajectory(batch)})
 
 
 class ContractDetail(APIView):
